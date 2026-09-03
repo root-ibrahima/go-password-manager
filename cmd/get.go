@@ -17,7 +17,11 @@ var getCmd = &cobra.Command{
 	Use:   "get",
 	Short: "Affiche un mot de passe déchiffré pour un site spécifique",
 	Run: func(cmd *cobra.Command, args []string) {
-		db := storage.InitDB("super-securise-passphrase")
+		db, err := storage.InitDB(os.Getenv("ENCRYPTION_KEY"))
+		if err != nil {
+			fmt.Println("Erreur :", err)
+			return
+		}
 
 		// Authentification avec le mot de passe maître
 		fmt.Print("Entrez le mot de passe maître : ")
@@ -36,7 +40,7 @@ var getCmd = &cobra.Command{
 		// Demander le site pour lequel récupérer le mot de passe
 		fmt.Print("Entrez le site (ex: example.com) : ")
 		var site string
-		fmt.Scanln(&site)
+		_, _ = fmt.Scanln(&site)
 		site = strings.TrimSpace(site)
 
 		// Vérifier que le site n'est pas vide

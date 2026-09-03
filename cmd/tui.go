@@ -36,7 +36,7 @@ var tuiCmd = &cobra.Command{
 // execCommand exécute une commande CLI en interne
 func execCommand(command string) {
 	rootCmd.SetArgs([]string{command})
-	rootCmd.Execute()
+	_ = rootCmd.Execute()
 }
 
 func init() {

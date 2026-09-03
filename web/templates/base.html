@@ -4,25 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestionnaire de Mots de Passe</title>
-    <script src="/static/htmx.min.js"></script>
-    <link rel="stylesheet" href="/static/tailwind.css">
+    <link rel="stylesheet" href="/static/app.css">
 </head>
-<body class="bg-gray-100 text-gray-900">
-    <nav class="p-4 bg-blue-600 text-white text-center">
-        <a href="/" class="px-4">Accueil</a>
-        <a href="/passwords" class="px-4">Mots de Passe</a>
-        <a href="/add-password" class="px-4">Ajouter</a>
+<body>
+    <nav class="navbar">
+        <a href="/" class="brand">
+            <svg class="icon" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path><circle cx="12" cy="16" r="1.5"></circle></svg>
+            SecurePass
+        </a>
+        <div class="nav-links">
+            <a href="/">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"></path><path d="M5 10v10h14V10"></path></svg>
+                Accueil
+            </a>
+            <a href="/passwords">
+                <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a4 4 0 0 1 8 0v2"></path></svg>
+                Mots de passe
+            </a>
+            <a href="/add-password">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
+                Ajouter
+            </a>
+            <a href="/logout">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5"></path><path d="M21 12H9"></path></svg>
+                Déconnexion
+            </a>
+        </div>
     </nav>
-    <div class="container mx-auto p-6">
+    <main class="page">
         {{ block "content" . }}{{ end }}
-    </div>
-
-<body class="bg-gray-900 text-white">
-    <div class="text-center p-10">
-        <h1 class="text-3xl font-bold text-red-500">🔥 Tailwind fonctionne !</h1>
-    </div>
-    <div class="container mx-auto p-6">
-        {{ template "content" . }}
-    </div>
+    </main>
 </body>
 </html>

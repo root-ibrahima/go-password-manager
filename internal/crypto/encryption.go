@@ -15,7 +15,7 @@ import (
 func getEncryptionKey() (string, error) {
 	key := os.Getenv("ENCRYPTION_KEY")
 	if len(key) != 32 {
-		return "", errors.New("Clé de chiffrement invalide ou non définie (doit être de 32 caractères)")
+		return "", errors.New("clé de chiffrement invalide ou non définie (doit être de 32 caractères)")
 	}
 	return key, nil
 }
@@ -57,7 +57,7 @@ func Decrypt(encryptedData string) (string, error) {
 
 	data, err := base64.StdEncoding.DecodeString(encryptedData)
 	if err != nil {
-		return "", errors.New("Données chiffrées invalides")
+		return "", errors.New("données chiffrées invalides")
 	}
 
 	block, err := aes.NewCipher([]byte(key))
@@ -71,7 +71,7 @@ func Decrypt(encryptedData string) (string, error) {
 	}
 
 	if len(data) < aesGCM.NonceSize() {
-		return "", errors.New("Données invalides ou corrompues")
+		return "", errors.New("données invalides ou corrompues")
 	}
 
 	nonce := data[:aesGCM.NonceSize()]
@@ -79,7 +79,7 @@ func Decrypt(encryptedData string) (string, error) {
 
 	plainText, err := aesGCM.Open(nil, nonce, cipherText, nil)
 	if err != nil {
-		return "", errors.New("Échec du déchiffrement (clé incorrecte ou données corrompues)")
+		return "", errors.New("échec du déchiffrement (clé incorrecte ou données corrompues)")
 	}
 
 	return string(plainText), nil

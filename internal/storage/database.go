@@ -4,16 +4,23 @@ import (
 	"database/sql"
 	"fmt"
 	"go-password-manager/internal/crypto"
-	"log"
+	"net/url"
 
 	_ "github.com/mutecomm/go-sqlcipher/v4"
 )
 
-// InitDB initialise la base de données SQLite chiffrée
-func InitDB(passphrase string) *sql.DB {
-	db, err := sql.Open("sqlite3", "passwords.db?_pragma_key="+passphrase)
+// InitDB initialise la base de données SQLite chiffrée.
+// Elle retourne une erreur plutôt que de terminer le process : appelée depuis
+// des handlers HTTP, un log.Fatal ferait planter tout le serveur pour une
+// seule requête en échec.
+func InitDB(passphrase string) (*sql.DB, error) {
+	if len(passphrase) != 32 {
+		return nil, fmt.Errorf("clé de chiffrement invalide ou non définie (doit être de 32 caractères)")
+	}
+
+	db, err := sql.Open("sqlite3", "passwords.db?_pragma_key="+url.QueryEscape(passphrase))
 	if err != nil {
-		log.Fatal("Erreur d'ouverture de la DB:", err)
+		return nil, fmt.Errorf("erreur d'ouverture de la DB : %w", err)
 	}
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS passwords (
@@ -23,7 +30,7 @@ func InitDB(passphrase string) *sql.DB {
 		password TEXT
 	);`)
 	if err != nil {
-		log.Fatal("Erreur de création de table:", err)
+		return nil, fmt.Errorf("erreur de création de table : %w", err)
 	}
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS master_password (
@@ -31,10 +38,10 @@ func InitDB(passphrase string) *sql.DB {
 		hash TEXT
 	);`)
 	if err != nil {
-		log.Fatal("Erreur création table master_password:", err)
+		return nil, fmt.Errorf("erreur création table master_password : %w", err)
 	}
 
-	return db
+	return db, nil
 }
 
 // SetMasterPassword enregistre le mot de passe maître hashé

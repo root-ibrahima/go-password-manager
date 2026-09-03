@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 
@@ -45,7 +44,7 @@ func GenerateEnvFile() {
 
 	// Écrire dans le fichier .env
 	envData := fmt.Sprintf("ENCRYPTION_KEY=%s\nAPI_TOKEN=%s\n", encryptionKey, apiToken)
-	err := ioutil.WriteFile(envFile, []byte(envData), 0644)
+	err := os.WriteFile(envFile, []byte(envData), 0600) //nolint:gosec // envFile est la constante littérale ".env", pas une entrée utilisateur
 	if err != nil {
 		log.Fatal("Erreur d'écriture dans .env :", err)
 	}

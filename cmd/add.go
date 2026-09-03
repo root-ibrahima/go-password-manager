@@ -37,7 +37,11 @@ var addCmd = &cobra.Command{
 	Use:   "add",
 	Short: "Ajoute un mot de passe sécurisé",
 	Run: func(cmd *cobra.Command, args []string) {
-		db := storage.InitDB("super-securise-passphrase")
+		db, err := storage.InitDB(os.Getenv("ENCRYPTION_KEY"))
+		if err != nil {
+			fmt.Println("Erreur :", err)
+			return
+		}
 
 		if !authenticateUser(db) {
 			return

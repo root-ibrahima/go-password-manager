@@ -1,8 +1,8 @@
 module go-password-manager
 
-go 1.23.0
+go 1.25.0
 
-toolchain go1.23.7
+toolchain go1.25.4
 
 require (
 	github.com/gorilla/mux v1.8.1

@@ -1,0 +1,6 @@
+.git
+.github
+.env
+passwords.db
+*.db
+README.md

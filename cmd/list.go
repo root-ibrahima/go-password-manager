@@ -17,7 +17,11 @@ var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Liste tous les mots de passe enregistrés",
 	Run: func(cmd *cobra.Command, args []string) {
-		db := storage.InitDB("super-securise-passphrase")
+		db, err := storage.InitDB(os.Getenv("ENCRYPTION_KEY"))
+		if err != nil {
+			fmt.Println("Erreur :", err)
+			return
+		}
 
 		// Demander le mot de passe maître
 		fmt.Print("Entrez le mot de passe maître : ")
@@ -40,7 +44,7 @@ var listCmd = &cobra.Command{
 			fmt.Println("Erreur de récupération :", err)
 			return
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		var passwords []struct {
 			ID       int

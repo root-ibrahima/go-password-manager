@@ -1,14 +1,15 @@
 package cmd
 
 import (
+	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"go-password-manager/internal/crypto"
 	"go-password-manager/internal/storage"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
@@ -44,7 +45,7 @@ func handleGetPassword(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Erreur serveur : API_TOKEN non défini", http.StatusInternalServerError)
 		return
 	}
-	if creds.Auth != expectedToken {
+	if subtle.ConstantTimeCompare([]byte(creds.Auth), []byte(expectedToken)) != 1 {
 		http.Error(w, "Authentification refusée", http.StatusUnauthorized)
 		return
 	}
@@ -71,25 +72,44 @@ func handleGetPassword(w http.ResponseWriter, r *http.Request) {
 
 	// Réponse JSON sécurisée
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(PasswordResponse{Username: username, Password: decryptedPassword})
+	//nolint:gosec // G117: renvoyer le mot de passe déchiffré est la fonction même de cet endpoint,
+	// authentifié par API_TOKEN (comparaison temps constant ci-dessus), consommé par l'extension navigateur.
+	if err := json.NewEncoder(w).Encode(PasswordResponse{Username: username, Password: decryptedPassword}); err != nil {
+		slog.Error("erreur d'écriture de la réponse", "error", err)
+	}
 }
 
 // StartServer lance le serveur API
 func StartServer() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Println("Avertissement : Impossible de charger le fichier .env")
+		slog.Warn("impossible de charger le fichier .env")
 	}
 
-	db = storage.InitDB("super-securise-passphrase")
+	db, err = storage.InitDB(os.Getenv("ENCRYPTION_KEY"))
+	if err != nil {
+		slog.Error("erreur d'initialisation de la base de données", "error", err)
+		os.Exit(1)
+	}
 
 	// Création du routeur
 	r := mux.NewRouter()
 	r.HandleFunc("/get-password", handleGetPassword).Methods("POST")
 
 	// Démarrage du serveur API
-	fmt.Println("Serveur API démarré sur http://localhost:8080...")
-	log.Fatal(http.ListenAndServe(":8080", r))
+	slog.Info("serveur API démarré", "url", "http://localhost:8080")
+	srv := &http.Server{
+		Addr:              ":8080",
+		Handler:           r,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	if err := srv.ListenAndServe(); err != nil {
+		slog.Error("erreur du serveur API", "error", err)
+		os.Exit(1)
+	}
 }
 
 var apiCmd = &cobra.Command{

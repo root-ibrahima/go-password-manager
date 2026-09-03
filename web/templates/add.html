@@ -1,9 +1,44 @@
 {{ define "content" }}
-<h2 class="text-xl font-bold mb-4">Ajouter un mot de passe</h2>
-<form hx-post="/add-password" hx-swap="outerHTML">
-    <input type="text" name="site" placeholder="Site Web" class="block border p-2 mb-2 w-full">
-    <input type="text" name="username" placeholder="Nom d'utilisateur" class="block border p-2 mb-2 w-full">
-    <input type="password" name="password" placeholder="Mot de passe" class="block border p-2 mb-2 w-full">
-    <button type="submit" class="bg-blue-600 text-white p-2">Ajouter</button>
-</form>
+<div class="card">
+    <h2 class="page-title">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
+        Ajouter un mot de passe
+    </h2>
+
+    {{ if .Error }}
+    <div class="alert alert-error">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v5M12 16h.01"></path></svg>
+        <span>{{ .Error }}</span>
+    </div>
+    {{ end }}
+
+    <form method="POST" action="/add-password">
+        <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+        <div class="field">
+            <label for="site">
+                <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20"></path></svg>
+                Site web
+            </label>
+            <input type="text" id="site" name="site" placeholder="example.com" required>
+        </div>
+        <div class="field">
+            <label for="username">
+                <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c0-4 4-6 8-6s8 2 8 6"></path></svg>
+                Nom d'utilisateur
+            </label>
+            <input type="text" id="username" name="username" placeholder="user123" required>
+        </div>
+        <div class="field">
+            <label for="password">
+                <svg class="icon" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+                Mot de passe (laisser vide pour en générer un)
+            </label>
+            <input type="password" id="password" name="password" placeholder="•••••••••••••••">
+        </div>
+        <button type="submit" class="btn btn-primary">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"></path></svg>
+            Enregistrer
+        </button>
+    </form>
+</div>
 {{ end }}

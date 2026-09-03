@@ -1,10 +1,34 @@
 {{ define "content" }}
-<h2 class="text-xl font-bold mb-4">Mots de passe enregistrés</h2>
-<ul>
-    {{ range . }}
-    <li class="bg-white p-2 my-2 shadow-md">{{ .Site }} - {{ .Username }}</li>
-    {{ else }}
-    <p>Aucun mot de passe enregistré.</p>
+<div class="card">
+    <h2 class="page-title">
+        <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a4 4 0 0 1 8 0v2"></path></svg>
+        Mots de passe enregistrés
+    </h2>
+
+    {{ if .Added }}
+    <div class="alert alert-success">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"></path></svg>
+        <span>Mot de passe enregistré pour <strong>{{ .Added }}</strong>.</span>
+    </div>
     {{ end }}
-</ul>
+
+    {{ if .Passwords }}
+    <ul class="entry-list">
+        {{ range .Passwords }}
+        <li class="entry">
+            <span class="entry-avatar">{{ printf "%.1s" .Site }}</span>
+            <span>
+                <div class="entry-site">{{ .Site }}</div>
+                <div class="entry-username">{{ .Username }}</div>
+            </span>
+        </li>
+        {{ end }}
+    </ul>
+    {{ else }}
+    <div class="empty-state">
+        <svg class="icon" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+        <p>Aucun mot de passe enregistré pour le moment.</p>
+    </div>
+    {{ end }}
+</div>
 {{ end }}
