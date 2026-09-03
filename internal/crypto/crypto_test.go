@@ -1,22 +1,33 @@
 package crypto
 
-import "testing"
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
 
-const testKey = "01234567890123456789012345678901" // 32 caractères
+func testKey(t *testing.T) []byte {
+	t.Helper()
+	key, err := NewDEK()
+	if err != nil {
+		t.Fatalf("NewDEK() a échoué : %v", err)
+	}
+	return key
+}
 
 func TestEncryptDecryptRoundTrip(t *testing.T) {
-	t.Setenv("ENCRYPTION_KEY", testKey)
-
+	key := testKey(t)
 	plainText := "hunter2"
-	cipherText, err := Encrypt(plainText)
+
+	cipherText, err := Encrypt(plainText, key)
 	if err != nil {
 		t.Fatalf("Encrypt() a échoué : %v", err)
 	}
-	if cipherText == plainText {
-		t.Fatal("Encrypt() a renvoyé le texte en clair")
+	if strings.Contains(cipherText, plainText) {
+		t.Fatal("le texte chiffré contient le texte en clair")
 	}
 
-	decrypted, err := Decrypt(cipherText)
+	decrypted, err := Decrypt(cipherText, key)
 	if err != nil {
 		t.Fatalf("Decrypt() a échoué : %v", err)
 	}
@@ -25,46 +36,66 @@ func TestEncryptDecryptRoundTrip(t *testing.T) {
 	}
 }
 
-func TestEncryptMissingKey(t *testing.T) {
-	t.Setenv("ENCRYPTION_KEY", "")
+func TestEncryptUsesFreshNonce(t *testing.T) {
+	key := testKey(t)
 
-	if _, err := Encrypt("secret"); err == nil {
-		t.Fatal("Encrypt() aurait dû échouer sans ENCRYPTION_KEY valide")
+	first, err := Encrypt("même message", key)
+	if err != nil {
+		t.Fatalf("Encrypt() a échoué : %v", err)
 	}
-}
-
-func TestDecryptWrongKey(t *testing.T) {
-	t.Setenv("ENCRYPTION_KEY", testKey)
-	cipherText, err := Encrypt("secret")
+	second, err := Encrypt("même message", key)
 	if err != nil {
 		t.Fatalf("Encrypt() a échoué : %v", err)
 	}
 
-	t.Setenv("ENCRYPTION_KEY", "98765432109876543210987654321098")
-	if _, err := Decrypt(cipherText); err == nil {
-		t.Fatal("Decrypt() aurait dû échouer avec une clé différente")
+	// Un nonce réutilisé serait une faute grave en GCM : deux chiffrements du
+	// même clair doivent produire des sorties différentes.
+	if first == second {
+		t.Fatal("deux chiffrements identiques : le nonce n'est pas renouvelé")
+	}
+}
+
+func TestEncryptRejectsBadKeyLength(t *testing.T) {
+	if _, err := Encrypt("secret", []byte("trop-courte")); err == nil {
+		t.Fatal("Encrypt() aurait dû refuser une clé de mauvaise taille")
+	}
+}
+
+func TestDecryptWrongKey(t *testing.T) {
+	cipherText, err := Encrypt("secret", testKey(t))
+	if err != nil {
+		t.Fatalf("Encrypt() a échoué : %v", err)
+	}
+
+	if _, err := Decrypt(cipherText, testKey(t)); err == nil {
+		t.Fatal("Decrypt() aurait dû échouer avec une autre clé")
+	}
+}
+
+func TestDecryptDetectsTampering(t *testing.T) {
+	key := testKey(t)
+	cipherText, err := Encrypt("secret", key)
+	if err != nil {
+		t.Fatalf("Encrypt() a échoué : %v", err)
+	}
+
+	// On altère un caractère du base64 : GCM étant authentifié, l'ouverture
+	// doit échouer plutôt que de renvoyer des données corrompues.
+	tampered := []byte(cipherText)
+	if tampered[len(tampered)-2] == 'A' {
+		tampered[len(tampered)-2] = 'B'
+	} else {
+		tampered[len(tampered)-2] = 'A'
+	}
+
+	if _, err := Decrypt(string(tampered), key); err == nil {
+		t.Fatal("Decrypt() aurait dû détecter l'altération")
 	}
 }
 
 func TestDecryptInvalidData(t *testing.T) {
-	t.Setenv("ENCRYPTION_KEY", testKey)
-
-	if _, err := Decrypt("pas-du-base64-valide!!"); err == nil {
+	if _, err := Decrypt("pas-du-base64-valide!!", testKey(t)); err == nil {
 		t.Fatal("Decrypt() aurait dû échouer sur des données invalides")
-	}
-}
-
-func TestHashPasswordAndCompareHash(t *testing.T) {
-	hash, err := HashPassword("hunter2")
-	if err != nil {
-		t.Fatalf("HashPassword() a échoué : %v", err)
-	}
-
-	if !CompareHash("hunter2", hash) {
-		t.Fatal("CompareHash() aurait dû accepter le bon mot de passe")
-	}
-	if CompareHash("wrong-password", hash) {
-		t.Fatal("CompareHash() aurait dû rejeter un mauvais mot de passe")
 	}
 }
 
@@ -76,7 +107,7 @@ func TestGeneratePassword(t *testing.T) {
 		t.Fatalf("longueur du mot de passe = %d, attendu 20", len(password))
 	}
 	for _, c := range password {
-		if !contains(charset, c) {
+		if !strings.ContainsRune(charset, c) {
 			t.Fatalf("caractère %q hors du charset attendu", c)
 		}
 	}
@@ -88,11 +119,98 @@ func TestGeneratePassword(t *testing.T) {
 	}
 }
 
-func contains(charset string, c rune) bool {
-	for _, allowed := range charset {
-		if allowed == c {
-			return true
+func TestGeneratePasswordDistribution(t *testing.T) {
+	// Le rejet d'échantillonnage doit produire une distribution ~uniforme.
+	// Sans lui, les premiers caractères du charset seraient sur-représentés.
+	const draws = 20000
+	counts := map[rune]int{}
+	for _, c := range GeneratePassword(draws) {
+		counts[c]++
+	}
+
+	expected := float64(draws) / 72.0
+	for c, n := range counts {
+		deviation := float64(n)/expected - 1
+		if deviation < -0.25 || deviation > 0.25 {
+			t.Fatalf("caractère %q : écart de %.1f%% à l'uniforme", c, deviation*100)
 		}
 	}
-	return false
+}
+
+func TestWrapUnwrapKey(t *testing.T) {
+	salt, err := NewSalt()
+	if err != nil {
+		t.Fatalf("NewSalt() a échoué : %v", err)
+	}
+	dek := testKey(t)
+
+	kek := DeriveKEK("mot-de-passe-maître", salt)
+	wrapped, err := WrapKey(kek, dek)
+	if err != nil {
+		t.Fatalf("WrapKey() a échoué : %v", err)
+	}
+	if bytes.Contains(wrapped, dek) {
+		t.Fatal("la clé de données apparaît en clair dans la clé enveloppée")
+	}
+
+	unwrapped, err := UnwrapKey(DeriveKEK("mot-de-passe-maître", salt), wrapped)
+	if err != nil {
+		t.Fatalf("UnwrapKey() a échoué : %v", err)
+	}
+	if !bytes.Equal(unwrapped, dek) {
+		t.Fatal("la clé déballée diffère de la clé d'origine")
+	}
+}
+
+func TestUnwrapKeyWrongPassword(t *testing.T) {
+	salt, _ := NewSalt()
+	dek := testKey(t)
+	wrapped, err := WrapKey(DeriveKEK("bon-mot-de-passe", salt), dek)
+	if err != nil {
+		t.Fatalf("WrapKey() a échoué : %v", err)
+	}
+
+	if _, err := UnwrapKey(DeriveKEK("mauvais-mot-de-passe", salt), wrapped); err == nil {
+		t.Fatal("UnwrapKey() aurait dû échouer avec un mauvais mot de passe")
+	}
+}
+
+func TestDeriveKEKIsSaltDependent(t *testing.T) {
+	saltA, _ := NewSalt()
+	saltB, _ := NewSalt()
+
+	if bytes.Equal(DeriveKEK("identique", saltA), DeriveKEK("identique", saltB)) {
+		t.Fatal("le même mot de passe donne la même clé avec deux sels différents")
+	}
+	if !bytes.Equal(DeriveKEK("identique", saltA), DeriveKEK("identique", saltA)) {
+		t.Fatal("la dérivation n'est pas déterministe pour un même sel")
+	}
+}
+
+func TestSubKeySeparation(t *testing.T) {
+	dek := testKey(t)
+
+	dataKey, err := SubKey(dek, PurposeData)
+	if err != nil {
+		t.Fatalf("SubKey(data) a échoué : %v", err)
+	}
+	dbKey, err := SubKey(dek, PurposeDB)
+	if err != nil {
+		t.Fatalf("SubKey(db) a échoué : %v", err)
+	}
+
+	if bytes.Equal(dataKey, dbKey) {
+		t.Fatal("les sous-clés data et db sont identiques : pas de séparation des usages")
+	}
+	if bytes.Equal(dataKey, dek) {
+		t.Fatal("la sous-clé data est égale à la DEK")
+	}
+	if len(dataKey) != KeyLen {
+		t.Fatalf("taille de sous-clé = %d, attendu %d", len(dataKey), KeyLen)
+	}
+
+	again, _ := SubKey(dek, PurposeData)
+	if !bytes.Equal(dataKey, again) {
+		t.Fatal("la dérivation de sous-clé n'est pas déterministe")
+	}
 }

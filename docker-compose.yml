@@ -1,0 +1,21 @@
+services:
+  securepass:
+    build: .
+    image: go-password-manager
+    container_name: go-password-manager
+    ports:
+      - "8080:8080"
+    volumes:
+      # Contient vault.key, passwords.db et .env : sans ce volume, le coffre
+      # est perdu à chaque recréation du conteneur.
+      - securepass-data:/app
+    restart: unless-stopped
+
+    # Durcissement : le conteneur n'a besoin d'aucun privilège particulier.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  securepass-data:

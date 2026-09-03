@@ -1,58 +1,39 @@
 package crypto
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 )
 
-// getEncryptionKey récupère la clé de chiffrement depuis l'environnement
-func getEncryptionKey() (string, error) {
-	key := os.Getenv("ENCRYPTION_KEY")
-	if len(key) != 32 {
-		return "", errors.New("clé de chiffrement invalide ou non définie (doit être de 32 caractères)")
+// Encrypt chiffre un texte avec AES-256-GCM. La clé est fournie par l'appelant
+// (sous-clé « data » dérivée de la DEK) : rien n'est lu depuis l'environnement,
+// aucune clé ne traîne dans un fichier en clair.
+func Encrypt(data string, key []byte) (string, error) {
+	if len(key) != KeyLen {
+		return "", fmt.Errorf("clé de chiffrement invalide (%d octets, %d attendus)", len(key), KeyLen)
 	}
-	return key, nil
-}
 
-// Encrypt chiffre un texte avec AES-GCM en utilisant la clé stockée dans l'environnement
-func Encrypt(data string) (string, error) {
-	key, err := getEncryptionKey()
+	aesGCM, err := newGCM(key)
 	if err != nil {
-		fmt.Println("Erreur de chiffrement :", err)
 		return "", err
 	}
 
-	block, err := aes.NewCipher([]byte(key))
-	if err != nil {
-		return "", fmt.Errorf("erreur lors de la création du cipher : %v", err)
-	}
-
-	nonce := make([]byte, 12)
+	nonce := make([]byte, aesGCM.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", fmt.Errorf("erreur lors de la génération du nonce : %v", err)
-	}
-
-	aesGCM, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("erreur lors de la création de l'instance AES-GCM : %v", err)
+		return "", fmt.Errorf("génération du nonce : %w", err)
 	}
 
 	cipherText := aesGCM.Seal(nonce, nonce, []byte(data), nil)
 	return base64.StdEncoding.EncodeToString(cipherText), nil
 }
 
-// Decrypt déchiffre un texte chiffré avec AES-GCM en utilisant la clé stockée dans l'environnement
-func Decrypt(encryptedData string) (string, error) {
-	key, err := getEncryptionKey()
-	if err != nil {
-		fmt.Println("Erreur de déchiffrement :", err)
-		return "", err
+// Decrypt déchiffre un texte produit par Encrypt avec la même clé.
+func Decrypt(encryptedData string, key []byte) (string, error) {
+	if len(key) != KeyLen {
+		return "", fmt.Errorf("clé de chiffrement invalide (%d octets, %d attendus)", len(key), KeyLen)
 	}
 
 	data, err := base64.StdEncoding.DecodeString(encryptedData)
@@ -60,14 +41,9 @@ func Decrypt(encryptedData string) (string, error) {
 		return "", errors.New("données chiffrées invalides")
 	}
 
-	block, err := aes.NewCipher([]byte(key))
+	aesGCM, err := newGCM(key)
 	if err != nil {
-		return "", fmt.Errorf("erreur lors de la création du cipher : %v", err)
-	}
-
-	aesGCM, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("erreur lors de la création de l'instance AES-GCM : %v", err)
+		return "", err
 	}
 
 	if len(data) < aesGCM.NonceSize() {
@@ -75,9 +51,7 @@ func Decrypt(encryptedData string) (string, error) {
 	}
 
 	nonce := data[:aesGCM.NonceSize()]
-	cipherText := data[aesGCM.NonceSize():]
-
-	plainText, err := aesGCM.Open(nil, nonce, cipherText, nil)
+	plainText, err := aesGCM.Open(nil, nonce, data[aesGCM.NonceSize():], nil)
 	if err != nil {
 		return "", errors.New("échec du déchiffrement (clé incorrecte ou données corrompues)")
 	}

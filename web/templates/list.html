@@ -13,6 +13,13 @@
         {{ end }}
     </div>
 
+    {{ if .Deleted }}
+    <div class="alert alert-success" role="status">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg>
+        <span>Entrée supprimée{{ if .Deleted }} : <strong>{{ .Deleted }}</strong>{{ end }}.</span>
+    </div>
+    {{ end }}
+
     {{ if .Added }}
     <div class="alert alert-success" role="status">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg>
@@ -36,6 +43,15 @@
                         aria-label="Copier l'identifiant de {{ .Site }}">
                     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
                 </button>
+                <form method="POST" action="/delete-password" class="entry-delete-form"
+                      data-confirm="Supprimer définitivement l'entrée {{ .Site }} ?">
+                    <input type="hidden" name="csrf_token" value="{{ $.CSRFToken }}">
+                    <input type="hidden" name="id" value="{{ .ID }}">
+                    <input type="hidden" name="site" value="{{ .Site }}">
+                    <button type="submit" class="icon-btn is-danger" aria-label="Supprimer l'entrée {{ .Site }}">
+                        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6"></path><path d="M6 7l1 13h10l1-13"></path><path d="M9 7V4h6v3"></path></svg>
+                    </button>
+                </form>
             </span>
         </li>
         {{ end }}

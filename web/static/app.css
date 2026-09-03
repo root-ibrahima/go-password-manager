@@ -155,6 +155,13 @@
   box-sizing: border-box;
 }
 
+/* Un display: flex/grid défini par l'auteur l'emporte sur le display: none de
+   la feuille de style du navigateur : sans cette règle, un élément portant
+   l'attribut hidden resterait visible. */
+[hidden] {
+  display: none !important;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
 }
@@ -1292,4 +1299,192 @@ a {
   .entry {
     gap: 0.7rem;
   }
+}
+
+/* ==========================================================================
+   13. Générateur de mots de passe
+   ========================================================================== */
+
+.gen-output {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-base);
+  min-height: 74px;
+}
+
+.gen-password {
+  flex: 1;
+  min-width: 0;
+  font-size: clamp(1rem, 3vw, 1.32rem);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+/* Coloration par classe de caractères : la composition se lit d'un coup d'œil. */
+.pw-char {
+  color: var(--text);
+}
+
+.pw-char.is-digit {
+  color: var(--accent-2);
+}
+
+.pw-char.is-symbol {
+  color: var(--accent-3);
+}
+
+.gen-output-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex: none;
+}
+
+.gen-controls {
+  margin: 1.5rem 0;
+  display: grid;
+  gap: 1.5rem;
+}
+
+.gen-length label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+  font-size: 0.85rem;
+  font-weight: 550;
+  color: var(--text-dim);
+}
+
+.gen-length-value {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.gen-length input[type="range"] {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  cursor: pointer;
+}
+
+.gen-length input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--surface-solid);
+  border: 2px solid var(--accent);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s var(--ease);
+}
+
+.gen-length input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.gen-length input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--surface-solid);
+  border: 2px solid var(--accent);
+  cursor: pointer;
+}
+
+.gen-classes {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.5rem;
+}
+
+.gen-classes legend {
+  padding: 0;
+  margin-bottom: 0.6rem;
+  font-size: 0.85rem;
+  font-weight: 550;
+  color: var(--text-dim);
+}
+
+.gen-check {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 0.86rem;
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease), background-color 0.2s var(--ease);
+}
+
+.gen-check:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.gen-check input {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.gen-check:has(input:checked) {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: var(--accent-soft);
+}
+
+.gen-sample {
+  font-size: 0.78rem;
+  color: var(--text-faint);
+}
+
+.gen-sample.is-digit {
+  color: var(--accent-2);
+}
+
+.gen-sample.is-symbol {
+  color: var(--accent-3);
+}
+
+/* Bouton de suppression d'une entrée : rouge uniquement au survol, pour ne
+   pas transformer la liste en champ de mines visuel. */
+.entry-actions .icon-btn.is-danger:hover {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+}
+
+.entry-delete-form {
+  display: inline;
+}
+
+/* Bouton de suppression armé : il attend une seconde confirmation. */
+.icon-btn.is-armed {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  animation: armedPulse 1s var(--ease) infinite;
+}
+
+@keyframes armedPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }

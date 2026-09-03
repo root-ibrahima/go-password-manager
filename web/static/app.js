@@ -154,25 +154,64 @@
 
   /* ------------------------------------------------ génération sécurisée */
 
-  var CHARSET =
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()";
+  var CHAR_CLASSES = {
+    lower: "abcdefghijklmnopqrstuvwxyz",
+    upper: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    digits: "0123456789",
+    symbols: "!@#$%^&*()-_=+[]{};:,.?"
+  };
 
-  /* Même approche que le backend Go : crypto/rand côté serveur,
-     crypto.getRandomValues ici, avec rejection sampling pour éliminer
-     le biais modulo (on rejette les octets >= au plus grand multiple
-     de la taille du charset tenant sur un octet). */
-  function generatePassword(length) {
-    var max = 256 - (256 % CHARSET.length);
-    var out = "";
-    var buf = new Uint8Array(1);
-
-    while (out.length < length) {
+  /* Entier uniforme dans [0, max) par rejection sampling : on écarte la queue
+     qui ne se divise pas exactement par max, pour éliminer le biais modulo.
+     Même principe que le crypto/rand du backend Go. */
+  function randomInt(max) {
+    var limit = Math.floor(0x100000000 / max) * max;
+    var buf = new Uint32Array(1);
+    for (;;) {
       crypto.getRandomValues(buf);
-      if (buf[0] < max) {
-        out += CHARSET.charAt(buf[0] % CHARSET.length);
+      if (buf[0] < limit) {
+        return buf[0] % max;
       }
     }
-    return out;
+  }
+
+  /* Mélange de Fisher-Yates alimenté par le même aléa cryptographique. */
+  function shuffle(items) {
+    for (var i = items.length - 1; i > 0; i--) {
+      var j = randomInt(i + 1);
+      var tmp = items[i];
+      items[i] = items[j];
+      items[j] = tmp;
+    }
+    return items;
+  }
+
+  /* Génère en garantissant au moins un caractère de chaque classe demandée :
+     un tirage naïf dans l'union des classes peut ne produire aucun chiffre,
+     et donc un mot de passe qui viole la politique affichée à l'utilisateur. */
+  function generateFrom(sets, length) {
+    if (!sets.length) {
+      return "";
+    }
+
+    var chars = sets.map(function (set) {
+      return set.charAt(randomInt(set.length));
+    });
+
+    var pool = sets.join("");
+    while (chars.length < length) {
+      chars.push(pool.charAt(randomInt(pool.length)));
+    }
+
+    // Si la longueur demandée est inférieure au nombre de classes, on tronque.
+    return shuffle(chars).slice(0, length).join("");
+  }
+
+  function generatePassword(length) {
+    return generateFrom(
+      [CHAR_CLASSES.lower, CHAR_CLASSES.upper, CHAR_CLASSES.digits, CHAR_CLASSES.symbols],
+      length
+    );
   }
 
   /* --------------------------------------------------- force du mot de passe */
@@ -284,6 +323,197 @@
     });
   }
 
+
+  /* ------------------------------------------------------- générateur (page) */
+
+  var HANDOFF_KEY = "securepass-pending-password";
+
+  /* Affiche le mot de passe caractère par caractère, en distinguant lettres,
+     chiffres et symboles : on repère d'un coup d'œil la composition réelle. */
+  function renderPassword(container, value) {
+    container.textContent = "";
+    value.split("").forEach(function (ch) {
+      var span = document.createElement("span");
+      span.className = "pw-char";
+      if (/[0-9]/.test(ch)) {
+        span.classList.add("is-digit");
+      } else if (/[^a-zA-Z0-9]/.test(ch)) {
+        span.classList.add("is-symbol");
+      }
+      span.textContent = ch;
+      container.appendChild(span);
+    });
+  }
+
+  function initGenerator() {
+    var display = $("[data-gen-output]");
+    if (!display) {
+      return;
+    }
+
+    var lengthInput = $("[data-gen-length]");
+    var lengthLabel = $("[data-gen-length-value]");
+    var meter = $("[data-gen-strength]");
+    var segments = $$(".strength-seg", meter);
+    var label = $(".strength-label", meter);
+    var warning = $("[data-gen-warning]");
+    var current = "";
+
+    function selectedSets() {
+      return $$("[data-gen-class]")
+        .filter(function (box) {
+          return box.checked;
+        })
+        .map(function (box) {
+          return CHAR_CLASSES[box.getAttribute("data-gen-class")];
+        });
+    }
+
+    function regenerate() {
+      var sets = selectedSets();
+
+      // Au moins une classe doit rester active, sinon rien n'est générable.
+      if (!sets.length) {
+        warning.hidden = false;
+        display.textContent = "";
+        current = "";
+        return;
+      }
+      warning.hidden = true;
+
+      current = generateFrom(sets, parseInt(lengthInput.value, 10));
+      renderPassword(display, current);
+
+      var bits = entropyBits(current);
+      var level = levelFor(bits);
+      meter.classList.add("is-visible");
+      meter.style.setProperty("--strength-color", level.color);
+      label.textContent = level.label + " · " + Math.round(bits) + " bits d'entropie";
+      segments.forEach(function (seg, i) {
+        seg.classList.toggle("on", i < level.segments);
+      });
+    }
+
+    lengthInput.addEventListener("input", function () {
+      lengthLabel.textContent = lengthInput.value;
+      regenerate();
+    });
+
+    $$("[data-gen-class]").forEach(function (box) {
+      box.addEventListener("change", regenerate);
+    });
+
+    var regenBtn = $("[data-gen-regenerate]");
+    if (regenBtn) {
+      regenBtn.addEventListener("click", regenerate);
+    }
+
+    var copyBtn = $("[data-gen-copy]");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", function () {
+        if (!current) {
+          return;
+        }
+        copyText(current).then(
+          function () {
+            copyBtn.classList.add("is-done");
+            toast("Mot de passe copié");
+            window.setTimeout(function () {
+              copyBtn.classList.remove("is-done");
+            }, 1600);
+          },
+          function () {
+            toast("Copie impossible");
+          }
+        );
+      });
+    }
+
+    var useBtn = $("[data-gen-use]");
+    if (useBtn) {
+      useBtn.addEventListener("click", function () {
+        if (!current) {
+          return;
+        }
+        // Transmis via sessionStorage plutôt que par l'URL : un mot de passe
+        // dans une query string finirait dans l'historique et les journaux.
+        try {
+          sessionStorage.setItem(HANDOFF_KEY, current);
+          window.location.href = "/add-password";
+        } catch (e) {
+          toast("Stockage de session indisponible");
+        }
+      });
+    }
+
+    lengthLabel.textContent = lengthInput.value;
+    regenerate();
+  }
+
+  /* Récupère un mot de passe généré sur la page dédiée, puis l'efface aussitôt
+     du stockage de session pour ne pas le laisser traîner. */
+  function initHandoff() {
+    var input = $("[data-strength-for]");
+    if (!input) {
+      return;
+    }
+
+    var pending;
+    try {
+      pending = sessionStorage.getItem(HANDOFF_KEY);
+      sessionStorage.removeItem(HANDOFF_KEY);
+    } catch (e) {
+      return;
+    }
+
+    if (pending) {
+      input.type = "text";
+      input.value = pending;
+      input.dispatchEvent(new Event("input"));
+      toast("Mot de passe généré inséré");
+    }
+  }
+
+
+  /* --------------------------------------------- confirmation de suppression */
+
+  /* Un premier clic « arme » le bouton, un second confirme. On évite ainsi la
+     boîte confirm() native, bloquante et non stylable, tout en gardant un
+     garde-fou sur une action irréversible. */
+  function initDeleteConfirm() {
+    $$("form[data-confirm]").forEach(function (form) {
+      var btn = $("button[type=submit]", form);
+      if (!btn) {
+        return;
+      }
+
+      var armed = false;
+      var timer;
+
+      function disarm() {
+        armed = false;
+        btn.classList.remove("is-armed");
+        btn.setAttribute("aria-label", btn.getAttribute("data-label-idle"));
+      }
+
+      btn.setAttribute("data-label-idle", btn.getAttribute("aria-label") || "Supprimer");
+
+      form.addEventListener("submit", function (event) {
+        if (armed) {
+          return; // second clic : on laisse partir la requête
+        }
+        event.preventDefault();
+        armed = true;
+        btn.classList.add("is-armed");
+        btn.setAttribute("aria-label", "Cliquez à nouveau pour confirmer la suppression");
+        toast(form.getAttribute("data-confirm") + " Cliquez à nouveau.");
+
+        window.clearTimeout(timer);
+        timer = window.setTimeout(disarm, 4000);
+      });
+    });
+  }
+
   /* ------------------------------------------------------------------ init */
 
   function init() {
@@ -294,6 +524,9 @@
     initCopyButtons();
     initStrengthMeter();
     initPasswordTools();
+    initGenerator();
+    initHandoff();
+    initDeleteConfirm();
   }
 
   if (document.readyState === "loading") {

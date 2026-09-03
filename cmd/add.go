@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"database/sql"
 	"fmt"
 	"go-password-manager/internal/crypto"
 	"go-password-manager/internal/storage"
@@ -10,42 +9,19 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
-
-// authenticateUser vérifie le mot de passe maître
-func authenticateUser(db *sql.DB) bool {
-	fmt.Print("Entrez le mot de passe maître : ")
-	masterPassword, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Println()
-	if err != nil {
-		fmt.Println("Erreur de lecture du mot de passe")
-		return false
-	}
-
-	if !storage.CheckMasterPassword(db, string(masterPassword)) {
-		fmt.Println("Mot de passe maître incorrect !")
-		return false
-	}
-
-	fmt.Println("Authentification réussie !")
-	return true
-}
 
 // addCmd ajoute un mot de passe sécurisé
 var addCmd = &cobra.Command{
 	Use:   "add",
 	Short: "Ajoute un mot de passe sécurisé",
 	Run: func(cmd *cobra.Command, args []string) {
-		db, err := storage.InitDB(os.Getenv("ENCRYPTION_KEY"))
+		db, dataKey, err := unlockVault()
 		if err != nil {
 			fmt.Println("Erreur :", err)
 			return
 		}
-
-		if !authenticateUser(db) {
-			return
-		}
+		defer func() { _ = db.Close() }()
 
 		reader := bufio.NewReader(os.Stdin)
 
@@ -57,28 +33,34 @@ var addCmd = &cobra.Command{
 		username, _ := reader.ReadString('\n')
 		username = strings.TrimSpace(username)
 
-		fmt.Print("Mot de passe (laisser vide pour générer automatiquement) : ")
-		password, _ := reader.ReadString('\n')
-		password = strings.TrimSpace(password)
+		if site == "" || username == "" {
+			fmt.Println("Erreur : le site et le nom d'utilisateur sont obligatoires.")
+			return
+		}
+
+		password, err := promptPassword("Mot de passe (laisser vide pour en générer un) : ")
+		if err != nil {
+			fmt.Println("Erreur :", err)
+			return
+		}
 
 		if password == "" {
 			password = crypto.GeneratePassword(16)
 			fmt.Println("Mot de passe généré :", password)
 		}
 
-		// Chiffrer le mot de passe
-		encryptedPassword, err := crypto.Encrypt(password)
+		encryptedPassword, err := crypto.Encrypt(password, dataKey)
 		if err != nil {
 			fmt.Println("Erreur de chiffrement :", err)
 			return
 		}
 
-		_, err = db.Exec("INSERT INTO passwords (site, username, password) VALUES (?, ?, ?)", site, username, encryptedPassword)
-		if err != nil {
+		if err := storage.AddEntry(db, site, username, encryptedPassword); err != nil {
 			fmt.Println("Erreur lors de l'ajout :", err)
-		} else {
-			fmt.Println("Mot de passe ajouté avec succès !")
+			return
 		}
+
+		fmt.Println("Mot de passe ajouté avec succès !")
 	},
 }
 

@@ -5,12 +5,12 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"go-password-manager/internal/storage"
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 )
@@ -23,6 +23,10 @@ const sessionTTL = 15 * time.Minute
 type sessionData struct {
 	expiry    time.Time
 	csrfToken string
+	// dek est la clé de données déballée au login. Elle ne vit qu'en mémoire,
+	// le temps de la session : à l'expiration ou à la déconnexion, elle
+	// disparaît avec l'entrée de la map.
+	dek []byte
 }
 
 var (
@@ -130,15 +134,38 @@ func randomToken() string {
 
 // createSession génère un nouveau jeton de session et son jeton CSRF associé,
 // et les enregistre avec une expiration glissante de 15 minutes.
-func createSession() (sessionToken, csrfToken string) {
+func createSession(dek []byte) (sessionToken, csrfToken string) {
 	sessionToken = randomToken()
 	csrfToken = randomToken()
 
 	sessionsMutex.Lock()
-	sessions[sessionToken] = sessionData{expiry: time.Now().Add(sessionTTL), csrfToken: csrfToken}
+	sessions[sessionToken] = sessionData{
+		expiry:    time.Now().Add(sessionTTL),
+		csrfToken: csrfToken,
+		dek:       dek,
+	}
 	sessionsMutex.Unlock()
 
 	return sessionToken, csrfToken
+}
+
+// vaultKeysFor renvoie les sous-clés dérivées de la DEK conservée en session.
+func vaultKeysFor(sessionToken string) (dataKey, dbKey []byte, err error) {
+	sessionsMutex.Lock()
+	data, ok := sessions[sessionToken]
+	sessionsMutex.Unlock()
+
+	if !ok || len(data.dek) == 0 {
+		return nil, nil, errors.New("session sans clé de coffre")
+	}
+
+	if dataKey, err = storage.DataKey(data.dek); err != nil {
+		return nil, nil, err
+	}
+	if dbKey, err = storage.DBKey(data.dek); err != nil {
+		return nil, nil, err
+	}
+	return dataKey, dbKey, nil
 }
 
 // validateSession vérifie qu'un jeton de session est connu et non expiré.
@@ -277,19 +304,16 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	password := r.FormValue("master_password")
 
-	db, err := storage.InitDB(os.Getenv("ENCRYPTION_KEY"))
+	// Le déverrouillage authentifie : si le mot de passe maître est faux,
+	// l'ouverture AES-GCM de la clé enveloppée échoue.
+	dek, err := storage.UnlockVault(password)
 	if err != nil {
-		slog.Error("erreur d'initialisation de la base de données", "error", err)
-		http.Error(w, "Erreur serveur, veuillez réessayer.", http.StatusInternalServerError)
-		return
-	}
-	if !storage.CheckMasterPassword(db, password) {
 		recordFailedLogin(ip)
 		writeHTML(w, fmt.Sprintf(loginFormHTML, loginErrorAlert))
 		return
 	}
 
-	sessionToken, _ := createSession()
+	sessionToken, _ := createSession(dek)
 
 	//nolint:gosec // G124: Secure est volontairement omis : cet outil est destiné à un usage
 	// local/réseau interne servi en HTTP simple, pas parce que c'est acceptable en général.

@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"database/sql"
 	"go-password-manager/internal/crypto"
 	"go-password-manager/internal/storage"
 	"html/template"
@@ -10,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -23,7 +25,7 @@ var pageTemplates = make(map[string]*template.Template)
 
 // InitTemplates charge les templates au démarrage
 func InitTemplates() {
-	for _, page := range []string{"home.html", "list.html", "add.html"} {
+	for _, page := range []string{"home.html", "list.html", "add.html", "generator.html"} {
 		tmpl, err := template.ParseFiles("web/templates/base.html", "web/templates/"+page)
 		if err != nil {
 			slog.Error("erreur de chargement des templates", "page", page, "error", err)
@@ -39,8 +41,14 @@ func HomeHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "home.html", nil)
 }
 
+// GeneratorHandler affiche le générateur de mots de passe.
+func GeneratorHandler(w http.ResponseWriter, r *http.Request) {
+	renderTemplate(w, "generator.html", nil)
+}
+
 // passwordEntry est une entrée affichée dans la liste des mots de passe.
 type passwordEntry struct {
+	ID       int
 	Site     string
 	Username string
 }
@@ -49,33 +57,51 @@ type passwordEntry struct {
 type listPageData struct {
 	Passwords []passwordEntry
 	Added     string
+	Deleted   string
+	Error     string
+	CSRFToken string
+}
+
+// openVault ouvre la base avec les clés de la session en cours.
+func openVault(r *http.Request) (*sql.DB, []byte, error) {
+	dataKey, dbKey, err := vaultKeysFor(sessionTokenFromRequest(r))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	db, err := storage.InitDB(dbKey)
+	if err != nil {
+		return nil, nil, err
+	}
+	return db, dataKey, nil
 }
 
 // ListPasswords affiche la liste des mots de passe
 func ListPasswords(w http.ResponseWriter, r *http.Request) {
-	db, err := storage.InitDB(os.Getenv("ENCRYPTION_KEY"))
+	db, _, err := openVault(r)
 	if err != nil {
-		http.Error(w, "Erreur serveur : "+err.Error(), http.StatusInternalServerError)
+		slog.Error("ouverture du coffre", "error", err)
+		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
 		return
 	}
-	rows, err := db.Query("SELECT site, username FROM passwords")
+	defer func() { _ = db.Close() }()
+
+	entries, err := storage.ListEntries(db)
 	if err != nil {
 		http.Error(w, "Erreur lors de la récupération des mots de passe", http.StatusInternalServerError)
 		return
 	}
-	defer func() { _ = rows.Close() }()
 
-	var passwords []passwordEntry
-	for rows.Next() {
-		var entry passwordEntry
-		if err := rows.Scan(&entry.Site, &entry.Username); err == nil {
-			passwords = append(passwords, entry)
-		}
+	passwords := make([]passwordEntry, 0, len(entries))
+	for _, e := range entries {
+		passwords = append(passwords, passwordEntry{ID: e.ID, Site: e.Site, Username: e.Username})
 	}
 
 	renderTemplate(w, "list.html", listPageData{
 		Passwords: passwords,
 		Added:     r.URL.Query().Get("added"),
+		Deleted:   r.URL.Query().Get("deleted"),
+		CSRFToken: csrfTokenFor(sessionTokenFromRequest(r)),
 	})
 }
 
@@ -89,55 +115,86 @@ type addPageData struct {
 func AddPasswordHandler(w http.ResponseWriter, r *http.Request) {
 	csrfToken := csrfTokenFor(sessionTokenFromRequest(r))
 
-	if r.Method == http.MethodPost {
-		if !validCSRF(sessionTokenFromRequest(r), r.FormValue("csrf_token")) {
-			renderTemplate(w, "add.html", addPageData{Error: "Session invalide, veuillez réessayer.", CSRFToken: csrfToken})
-			return
-		}
-
-		site := r.FormValue("site")
-		username := r.FormValue("username")
-		password := r.FormValue("password")
-
-		if site == "" || username == "" {
-			renderTemplate(w, "add.html", addPageData{Error: "Le site et le nom d'utilisateur sont obligatoires.", CSRFToken: csrfToken})
-			return
-		}
-
-		if password == "" {
-			password = crypto.GeneratePassword(16)
-		}
-
-		encryptionKey := os.Getenv("ENCRYPTION_KEY")
-		if len(encryptionKey) != 32 {
-			renderTemplate(w, "add.html", addPageData{Error: "Erreur serveur : ENCRYPTION_KEY invalide.", CSRFToken: csrfToken})
-			return
-		}
-
-		encryptedPassword, err := crypto.Encrypt(password)
-		if err != nil {
-			renderTemplate(w, "add.html", addPageData{Error: "Erreur de chiffrement du mot de passe.", CSRFToken: csrfToken})
-			return
-		}
-
-		db, err := storage.InitDB(encryptionKey)
-		if err != nil {
-			renderTemplate(w, "add.html", addPageData{Error: "Erreur serveur : " + err.Error(), CSRFToken: csrfToken})
-			return
-		}
-		if _, err := db.Exec("INSERT INTO passwords (site, username, password) VALUES (?, ?, ?)", site, username, encryptedPassword); err != nil {
-			renderTemplate(w, "add.html", addPageData{Error: "Erreur lors de l'enregistrement.", CSRFToken: csrfToken})
-			return
-		}
-
-		// Le préfixe "/passwords?added=" est littéral, donc pas de redirection ouverte
-		// possible ; site est tout de même échappé pour éviter l'injection d'un
-		// paramètre de requête supplémentaire (ex. site="x&added=autre-site").
-		http.Redirect(w, r, "/passwords?added="+url.QueryEscape(site), http.StatusSeeOther)
+	if r.Method != http.MethodPost {
+		renderTemplate(w, "add.html", addPageData{CSRFToken: csrfToken})
 		return
 	}
 
-	renderTemplate(w, "add.html", addPageData{CSRFToken: csrfToken})
+	fail := func(message string) {
+		renderTemplate(w, "add.html", addPageData{Error: message, CSRFToken: csrfToken})
+	}
+
+	if !validCSRF(sessionTokenFromRequest(r), r.FormValue("csrf_token")) {
+		fail("Session invalide, veuillez réessayer.")
+		return
+	}
+
+	site := r.FormValue("site")
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+
+	if site == "" || username == "" {
+		fail("Le site et le nom d'utilisateur sont obligatoires.")
+		return
+	}
+
+	db, dataKey, err := openVault(r)
+	if err != nil {
+		slog.Error("ouverture du coffre", "error", err)
+		fail("Erreur serveur.")
+		return
+	}
+	defer func() { _ = db.Close() }()
+
+	if password == "" {
+		password = crypto.GeneratePassword(16)
+	}
+
+	encryptedPassword, err := crypto.Encrypt(password, dataKey)
+	if err != nil {
+		fail("Erreur de chiffrement du mot de passe.")
+		return
+	}
+
+	if err := storage.AddEntry(db, site, username, encryptedPassword); err != nil {
+		fail("Erreur lors de l'enregistrement.")
+		return
+	}
+
+	// Le préfixe est littéral, donc pas de redirection ouverte possible ; site
+	// est échappé pour éviter l'injection d'un paramètre supplémentaire.
+	http.Redirect(w, r, "/passwords?added="+url.QueryEscape(site), http.StatusSeeOther)
+}
+
+// DeletePasswordHandler supprime une entrée du coffre.
+func DeletePasswordHandler(w http.ResponseWriter, r *http.Request) {
+	if !validCSRF(sessionTokenFromRequest(r), r.FormValue("csrf_token")) {
+		http.Redirect(w, r, "/passwords", http.StatusSeeOther)
+		return
+	}
+
+	id, err := strconv.Atoi(r.FormValue("id"))
+	if err != nil {
+		http.Redirect(w, r, "/passwords", http.StatusSeeOther)
+		return
+	}
+
+	db, _, err := openVault(r)
+	if err != nil {
+		slog.Error("ouverture du coffre", "error", err)
+		http.Error(w, "Erreur serveur", http.StatusInternalServerError)
+		return
+	}
+	defer func() { _ = db.Close() }()
+
+	site := r.FormValue("site")
+	if err := storage.DeleteEntry(db, id); err != nil {
+		slog.Error("suppression d'une entrée", "error", err)
+		http.Redirect(w, r, "/passwords", http.StatusSeeOther)
+		return
+	}
+
+	http.Redirect(w, r, "/passwords?deleted="+url.QueryEscape(site), http.StatusSeeOther)
 }
 
 // renderTemplate rend les fichiers HTML
@@ -152,7 +209,7 @@ func renderTemplate(w http.ResponseWriter, templateName string, data interface{}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := tmpl.ExecuteTemplate(w, "base.html", data); err != nil {
 		slog.Error("erreur de rendu de template", "template", templateName, "error", err)
-		http.Error(w, "Erreur de rendu : "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Erreur de rendu", http.StatusInternalServerError)
 	}
 }
 
@@ -172,18 +229,50 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
+// statusRecorder capture le code de statut pour le journal d'accès.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rec *statusRecorder) WriteHeader(code int) {
+	rec.status = code
+	rec.ResponseWriter.WriteHeader(code)
+}
+
+// accessLog journalise chaque requête en JSON structuré. Aucune donnée
+// sensible n'est enregistrée : ni corps de requête, ni paramètres.
+func accessLog(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+
+		next.ServeHTTP(rec, r)
+
+		slog.Info("requête",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", rec.status,
+			"duration_ms", time.Since(start).Milliseconds(),
+		)
+	})
+}
+
 // StartServer démarre le serveur web
 func StartServer() {
 	InitTemplates()       // Charger les templates au démarrage
 	startSessionCleanup() // Purger périodiquement les sessions expirées
 
 	r := mux.NewRouter()
+	r.Use(accessLog)
 	r.Use(securityHeaders)
 	r.HandleFunc("/", HomeHandler)
 	r.HandleFunc("/login", LoginHandler).Methods("GET", "POST")
 	r.HandleFunc("/logout", LogoutHandler).Methods("GET", "POST")
+	r.HandleFunc("/generator", requireAuth(GeneratorHandler)).Methods("GET")
 	r.HandleFunc("/passwords", requireAuth(ListPasswords)).Methods("GET")
 	r.HandleFunc("/add-password", requireAuth(AddPasswordHandler)).Methods("GET", "POST")
+	r.HandleFunc("/delete-password", requireAuth(DeletePasswordHandler)).Methods("POST")
 
 	// Servir les fichiers statiques
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
