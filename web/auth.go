@@ -192,38 +192,70 @@ const loginFormHTML = `<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connexion — Gestionnaire de Mots de Passe</title>
+    <meta name="color-scheme" content="dark light">
+    <title>Connexion — SecurePass</title>
+
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="preload" href="/static/fonts/inter-var-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/static/app.css">
+
+    <script src="/static/theme.js"></script>
 </head>
 <body>
+    <div class="grid-overlay" aria-hidden="true"></div>
+
     <div class="auth-shell">
-        <div class="auth-card">
-            <div class="hero-icon">
-                <svg class="icon" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path><circle cx="12" cy="16" r="1.5"></circle></svg>
+        <button type="button" class="theme-toggle" data-theme-toggle aria-label="Changer de thème">
+            <svg class="icon icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>
+            <svg class="icon icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+        </button>
+
+        <main class="auth-card">
+            <div class="vault">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path class="shackle" d="M8 11V7a4 4 0 0 1 8 0v4"></path>
+                    <rect class="lock-body" x="4" y="11" width="16" height="10" rx="2.5"></rect>
+                    <circle class="keyhole" cx="12" cy="16" r="1.6"></circle>
+                </svg>
             </div>
-            <h1>Accès sécurisé</h1>
-            <p class="subtitle">Entrez votre mot de passe maître pour continuer.</p>
+
+            <h1>Coffre verrouillé</h1>
+            <p class="auth-lede">Entrez votre mot de passe maître pour déverrouiller SecurePass.</p>
             %s
             <form method="POST" action="/login">
                 <div class="field">
                     <label for="master_password">
-                        <svg class="icon" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+                        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 11V7a4 4 0 0 1 8 0v4"></path><rect x="4" y="11" width="16" height="10" rx="2.5"></rect></svg>
                         Mot de passe maître
                     </label>
-                    <input type="password" id="master_password" name="master_password" required autofocus>
+                    <div class="input-wrap">
+                        <input type="password" id="master_password" name="master_password"
+                               class="mono" autocomplete="current-password" required autofocus>
+                        <button type="button" class="icon-btn" data-reveal hidden aria-pressed="false" aria-label="Afficher le mot de passe">
+                            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        </button>
+                    </div>
                 </div>
-                <button type="submit" class="btn btn-primary">
-                    <svg class="icon" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"></path><circle cx="12" cy="12" r="10"></circle></svg>
-                    Se connecter
+
+                <button type="submit" class="btn btn-primary btn-block">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 12l2 2 4-4"></path><circle cx="12" cy="12" r="10"></circle></svg>
+                    Déverrouiller
                 </button>
             </form>
-        </div>
+
+            <p class="auth-foot">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4.3-2.9 7.8-7 9-4.1-1.2-7-4.7-7-9V6z"></path></svg>
+                Session chiffrée · 5 tentatives par minute
+            </p>
+        </main>
     </div>
+
+    <script src="/static/app.js" defer></script>
 </body>
 </html>`
 
-const loginErrorAlert = `<div class="alert alert-error">
-    <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v5M12 16h.01"></path></svg>
+const loginErrorAlert = `<div class="alert alert-error" role="alert">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v5M12 16h.01"></path></svg>
     <span>Mot de passe maître incorrect.</span>
 </div>`
 

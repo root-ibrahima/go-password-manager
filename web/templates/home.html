@@ -1,35 +1,62 @@
 {{ define "content" }}
-<div class="hero">
-    <div class="hero-icon">
-        <svg class="icon" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path><circle cx="12" cy="16" r="1.5"></circle></svg>
+<section class="hero">
+    <div class="vault">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path class="shackle" d="M8 11V7a4 4 0 0 1 8 0v4"></path>
+            <rect class="lock-body" x="4" y="11" width="16" height="10" rx="2.5"></rect>
+            <circle class="keyhole" cx="12" cy="16" r="1.6"></circle>
+        </svg>
     </div>
-    <h1>Vos mots de passe, chiffrés et protégés</h1>
-    <p>Chiffrement AES-GCM, stockage local SQLCipher, accès verrouillé derrière un mot de passe maître.</p>
+
+    <h1>Vos mots de passe,<br><span class="grad">chiffrés de bout en bout</span></h1>
+    <p class="hero-lede">
+        Un coffre local, verrouillé derrière un mot de passe maître.
+        Rien ne quitte votre machine, rien n'est stocké en clair.
+    </p>
 
     <div class="btn-row">
         <a href="/passwords" class="btn btn-primary">
-            <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a4 4 0 0 1 8 0v2"></path></svg>
-            Voir les mots de passe
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2.5"></rect><path d="M8 7V5a4 4 0 0 1 8 0v2"></path></svg>
+            Ouvrir le coffre
         </a>
         <a href="/add-password" class="btn btn-secondary">
-            <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
-            Ajouter un mot de passe
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+            Ajouter une entrée
         </a>
     </div>
 
-    <div class="trust-badges">
-        <span class="badge">
-            <svg class="icon" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"></path></svg>
-            AES-256-GCM
-        </span>
-        <span class="badge">
-            <svg class="icon" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"></path></svg>
-            SQLCipher
-        </span>
-        <span class="badge">
-            <svg class="icon" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"></path></svg>
-            Session sécurisée
-        </span>
+    <div class="specs">
+        <article class="spec">
+            <span class="spec-icon">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4.3-2.9 7.8-7 9-4.1-1.2-7-4.7-7-9V6z"></path><path d="M9.5 12.2l1.8 1.8 3.4-3.6"></path></svg>
+            </span>
+            <div class="spec-title">AES-256-GCM</div>
+            <p class="spec-desc">Chiffrement authentifié, nonce aléatoire par entrée.</p>
+        </article>
+
+        <article class="spec">
+            <span class="spec-icon">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"></ellipse><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"></path><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"></path></svg>
+            </span>
+            <div class="spec-title">SQLCipher</div>
+            <p class="spec-desc">Base SQLite intégralement chiffrée sur le disque.</p>
+        </article>
+
+        <article class="spec">
+            <span class="spec-icon">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.2 2"></path></svg>
+            </span>
+            <div class="spec-title">Session 15 min</div>
+            <p class="spec-desc">Cookie HttpOnly, expiration glissante, jeton CSRF.</p>
+        </article>
+
+        <article class="spec">
+            <span class="spec-icon">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"></path></svg>
+            </span>
+            <div class="spec-title">bcrypt</div>
+            <p class="spec-desc">Mot de passe maître haché, jamais stocké en clair.</p>
+        </article>
     </div>
-</div>
+</section>
 {{ end }}
