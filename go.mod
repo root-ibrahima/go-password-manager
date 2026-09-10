@@ -1,8 +1,6 @@
 module go-password-manager
 
-go 1.25.0
-
-toolchain go1.25.4
+go 1.26.0
 
 require (
 	github.com/gorilla/mux v1.8.1
@@ -10,7 +8,7 @@ require (
 	github.com/manifoldco/promptui v0.9.0
 	github.com/mutecomm/go-sqlcipher/v4 v4.4.2
 	github.com/spf13/cobra v1.9.1
-	golang.org/x/crypto v0.36.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/term v0.45.0
 )
 
